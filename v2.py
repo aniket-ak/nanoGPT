@@ -101,6 +101,20 @@ class FeedForward(nn.Module):
     def forward(self, x):
         return self.net(x)
 
+class Block(nn.Module):
+    """Transformer block"""
+
+    def __init__(self, n_embed, n_head):
+        super().__init__()
+        head_size = n_embed// n_head
+        self.sa = MutliHeadAttention(n_head, head_size)
+        self.feeddorward = FeedForward(n_embed)
+
+    def forward(self, x):
+        x = self.sa(x)
+        x = self.feeddorward(x)
+        return x
+
 # super simple bigram model
 class BigramLanguageModel(nn.Module):
 
@@ -110,7 +124,11 @@ class BigramLanguageModel(nn.Module):
         self.token_embedding_table = nn.Embedding(vocab_size, n_embed)
         self.position_embedding_table = nn.Embedding(block_size , n_embed)
         self.lm_head = nn.Linear(n_embed, vocab_size)
-        self.feeddorward = FeedForward(n_embed)
+        self.blocks = nn.Sequential(
+            Block(n_embed, n_head=4),
+            Block(n_embed, n_head=4),
+            Block(n_embed, n_head=4),
+        )
 
         # self.sa_head = Head(n_embed)
         self.sa_head = MutliHeadAttention(4, n_embed//4) # because if having n number of self attention blocks, 
@@ -124,8 +142,7 @@ class BigramLanguageModel(nn.Module):
         token_emb = self.token_embedding_table(idx) # (B,T,C)
         pos_emb = self.position_embedding_table(torch.arange(T, device=device)) # (T,C)
         x = token_emb + pos_emb # (B, T, C) 
-        x = self.sa_head(x) # Self attention applied (B,T,C)
-        x = self.feeddorward(x)
+        x = self.blocks(x)
         logits = self.lm_head(x) # (B,T, vocab_size)
 
         if targets is None:
