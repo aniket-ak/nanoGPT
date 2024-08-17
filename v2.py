@@ -79,6 +79,27 @@ class Head(nn.Module):
         out = wei @ v
 
         return out
+    
+class MutliHeadAttention(nn.Module):
+    """Multi head attention"""
+    def __init__(self, num_heads, head_size):
+        super().__init__()
+        self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)])
+
+    def forward(self, x):
+        return torch.cat([h(x) for h in self.heads], dim=-1)
+    
+class FeedForward(nn.Module):
+    """Simple feedforward layer"""
+    def __init__(self, n_embed):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(n_embed, n_embed),
+            nn.ReLU()
+        )
+
+    def forward(self, x):
+        return self.net(x)
 
 # super simple bigram model
 class BigramLanguageModel(nn.Module):
@@ -89,8 +110,12 @@ class BigramLanguageModel(nn.Module):
         self.token_embedding_table = nn.Embedding(vocab_size, n_embed)
         self.position_embedding_table = nn.Embedding(block_size , n_embed)
         self.lm_head = nn.Linear(n_embed, vocab_size)
+        self.feeddorward = FeedForward(n_embed)
 
-        self.sa_head = Head(n_embed)
+        # self.sa_head = Head(n_embed)
+        self.sa_head = MutliHeadAttention(4, n_embed//4) # because if having n number of self attention blocks, 
+                                                        #we should scale down by 1/n since we are concatenating the 
+                                                        # outputs from individual heads in mutlihead attention
 
     def forward(self, idx, targets=None):
         B,T = idx.shape
@@ -100,6 +125,7 @@ class BigramLanguageModel(nn.Module):
         pos_emb = self.position_embedding_table(torch.arange(T, device=device)) # (T,C)
         x = token_emb + pos_emb # (B, T, C) 
         x = self.sa_head(x) # Self attention applied (B,T,C)
+        x = self.feeddorward(x)
         logits = self.lm_head(x) # (B,T, vocab_size)
 
         if targets is None:
